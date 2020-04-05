@@ -6,6 +6,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE GADTs #-}
 
 -- | All types for the language.
@@ -26,6 +27,7 @@ import qualified Data.Text.Encoding as T
 import           Prelude hiding (error)
 import           System.Exit (ExitCode)
 import qualified Text.Megaparsec as Mega
+import           GHC.Base (NonEmpty)
 
 -- | A shell action.
 data Action r where
@@ -112,8 +114,8 @@ data Token
   | BarToken
   deriving (Show, Eq, Ord, Data)
 
-instance Mega.ShowToken (Located Token) where
-  showTokens = unwords . map (showToken . locatedThing) . toList
+-- | Alias for disambiguation in Stream instance
+type Token' = Token
 
 showToken :: Token -> String
 showToken =
@@ -145,26 +147,26 @@ showToken =
   where
     quote label thing = label ++ " ‘" ++ thing ++ "’"
 
+-- | A sequence of located tokens
+newtype LTokens = LTokens (Seq (Located Token)) deriving (Show, Eq, Ord)
+
 -- | This instance gives support to parse LTokens with megaparsec.
-instance Ord a => Mega.Stream (Seq (Located a)) where
-  type Token (Seq (Located a)) = Located a
-  type Tokens (Seq (Located a)) = Seq (Located a)
+instance Mega.Stream LTokens where
+  type Token LTokens = Located Token'
+  type Tokens LTokens = Seq (Located Token')
   tokenToChunk Proxy = pure
   tokensToChunk Proxy = Seq.fromList
   chunkToTokens Proxy = toList
   chunkLength Proxy = length
   chunkEmpty Proxy = null
-  positionAt1 Proxy _ (Located start _ _) = start
-  positionAtN Proxy pos Seq.Empty = pos
-  positionAtN Proxy _ (Located start _ _ :<| _) = start
-  advance1 Proxy _ _ (Located _ end _) = end
-  advanceN Proxy _ pos Seq.Empty = pos
-  advanceN Proxy _ _ ts =
-    let Located _ end _ = last (toList ts) in end
-  take1_ Seq.Empty = Nothing
-  take1_ (t :<| ts) = Just (t, ts)
-  takeN_ n s
-    | n <= 0   = Just (mempty, s)
+  take1_ (LTokens Seq.Empty) = Nothing
+  take1_ (LTokens (t :<| ts)) = Just (t, LTokens ts)
+  takeN_ n (LTokens s)
+    | n <= 0   = Just (mempty, LTokens s)
     | null s   = Nothing
-    | otherwise = Just (Seq.splitAt n s)
-  takeWhile_ = Seq.spanl
+    | otherwise = let (s', s'') = Seq.splitAt n s in Just (s', LTokens s'')
+  takeWhile_ cond (LTokens tokens) = let (ts, ts') = Seq.spanl cond tokens in (ts, LTokens ts')
+  showTokens Proxy = unwords . map (showToken . locatedThing) . toList
+
+  -- TODO
+  -- reachOffset offset initialPosState

@@ -13,7 +13,6 @@ module Hell.Lexer
 
 import           Data.ByteString (ByteString)
 import           Data.Char
-import           Data.Monoid
 import           Data.Sequence (Seq(), (<|), (|>))
 import           Data.Void
 import           Data.Word
@@ -30,14 +29,14 @@ type Lexer = Mega.Parsec Void ByteString
 lexUnquotedByteString :: FilePath -> ByteString -> Either String (Seq (Located Token))
 lexUnquotedByteString fp bs =
   case Mega.runParser (Mega.space *> lexUnquoted <* Mega.eof) fp bs of
-    Left e -> Left (parseErrorPretty' bs e)
+    Left e -> Left (errorBundlePretty e)
     Right x -> Right x
 
 -- | Open the file strictly and lex it.
 lexQuotedByteString :: FilePath -> ByteString -> Either String (Seq (Located Token))
 lexQuotedByteString fp bs =
   case Mega.runParser (Mega.space *> lexQuoted <* Mega.eof) fp bs of
-    Left e -> Left (parseErrorPretty' bs e)
+    Left e -> Left (errorBundlePretty e)
     Right x -> Right x
 
 -- | Lex quoted code e.g. @ls -alh@.
@@ -159,7 +158,7 @@ w2c = toEnum . fromIntegral
 
 located :: Mega.MonadParsec e s m => m Token -> m (Located Token)
 located m = do
-  start <- Mega.getPosition
+  start <- Mega.getSourcePos
   v <- m
-  end <- Mega.getPosition
+  end <- Mega.getSourcePos
   pure (Located start end v)

@@ -16,8 +16,6 @@ import           CaseOf
 import           Control.Applicative
 import           Data.ByteString (ByteString)
 import           Data.Foldable
-import qualified Data.List.NonEmpty as NE
-import           Data.Sequence (Seq())
 import           Data.Text (Text)
 import qualified Data.Text as T
 import qualified Data.Text.Encoding as T
@@ -28,7 +26,7 @@ import           System.Exit
 import qualified Text.Megaparsec as Mega
 
 -- | Parse (Located Token)s into an AST.
-type Parser = Mega.Parsec Void (Seq (Located Token))
+type Parser = Mega.Parsec Void LTokens
 
 --------------------------------------------------------------------------------
 -- Quoted code parsers
@@ -40,15 +38,15 @@ parseQuotedByteString fp bs =
   case lexQuotedByteString fp bs of
     Left e -> Left e
     Right toks ->
-      case parseQuoted fp toks of
+      case parseQuoted fp (LTokens toks) of
         Right k -> pure k
-        Left e -> Left (Mega.parseErrorPretty e)
+        Left e -> Left (Mega.errorBundlePretty e)
 
 -- | Parse a quoted set of tokens like @ls -ali@.
 parseQuoted ::
      FilePath
-  -> Seq (Located Token)
-  -> Either (Mega.ParseError (Located Token) Void) SomeAction
+  -> LTokens
+  -> Either (Mega.ParseErrorBundle LTokens Void) SomeAction
 parseQuoted fp toks = Mega.parse actionParser fp toks
 
 -- | A parser for some action pipeline.
@@ -166,9 +164,9 @@ expect f =
   Mega.token
     (\case
        l@(Located {locatedThing = tok})
-         | Just token <- f tok -> Right (fmap (const token) l)
-       l -> Left (Just (Mega.Tokens (NE.fromList [l])), mempty))
-    Nothing
+         | Just token <- f tok -> Just (fmap (const token) l)
+       _ -> Nothing)
+    mempty
 
 utf8Text :: Located ByteString -> Parser (Located Text)
 utf8Text lstr =
